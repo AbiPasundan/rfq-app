@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function RfqTable({ rfqs, isLoading, error }) {
     if (isLoading) {
         return <p className="text-gray-500 text-center py-4">Memuat data RFQ...</p>;
