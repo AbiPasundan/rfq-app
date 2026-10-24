@@ -125,4 +125,97 @@ dataRoutes.post('/api/customers', async (req, res) => {
     }
 });
 
+dataRoutes.post('/api/rfqs', async (req, res) => {
+    const { customer_id, idempotency_key, status, items } = req.body;
+
+    // Validasi input dasar
+    if (!customer_id || !idempotency_key || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'customer_id, idempotency_key, dan items (minimal 1 item) wajib diisi'
+        });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        let subtotal = 0;
+        const processedItems = items.map(item => {
+            const qty = parseInt(item.qty, 10);
+            const unitPrice = parseFloat(item.unit_price);
+            const lineTotal = qty * unitPrice;
+
+            subtotal += lineTotal;
+
+            return {
+                sku: item.sku,
+                product_name: item.product_name,
+                qty,
+                unit_price: unitPrice,
+                line_total: lineTotal
+            };
+        });
+
+        const rfqQuery = `
+      INSERT INTO rfqs (customer_id, idempotency_key, status, subtotal)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, customer_id, idempotency_key, status, subtotal, created_at
+    `;
+        const rfqStatus = status || 'DRAFT';
+        const rfqResult = await client.query(rfqQuery, [customer_id, idempotency_key, rfqStatus, subtotal]);
+        const createdRfq = rfqResult.rows[0];
+
+        const createdItems = [];
+        for (const item of processedItems) {
+            const itemQuery = `
+        INSERT INTO rfq_items (rfq_id, sku, product_name, qty, unit_price, line_total)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, sku, product_name, qty, unit_price, line_total
+      `;
+            const itemResult = await client.query(itemQuery, [
+                createdRfq.id,
+                item.sku,
+                item.product_name,
+                item.qty,
+                item.unit_price,
+                item.line_total
+            ]);
+            createdItems.push(itemResult.rows[0]);
+        }
+
+        await client.query('COMMIT');
+
+        res.status(201).json({
+            success: true,
+            message: 'RFQ berhasil dibuat',
+            data: {
+                ...createdRfq,
+                items: createdItems
+            }
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+
+        if (err.code === '23505') {
+            if (err.constraint === 'rfqs_idempotency_key_key') {
+                return res.status(409).json({ success: false, message: 'Request duplikat terdeteksi (idempotency_key sudah digunakan)' });
+            }
+            if (err.constraint === 'rfq_items_rfq_id_sku_key') {
+                return res.status(400).json({ success: false, message: 'Terdapat SKU duplikat dalam satu RFQ' });
+            }
+        }
+        if (err.code === '23503') {
+            return res.status(404).json({ success: false, message: 'customer_id tidak ditemukan' });
+        }
+
+        res.status(500).json({ success: false, message: 'Server error saat membuat RFQ' });
+    } finally {
+        client.release();
+    }
+});
+
 export default dataRoutes
