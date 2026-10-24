@@ -1,0 +1,69 @@
+### Variable Environment
+@baseUrl = http://localhost:3000/api
+@idempotencyKey = {{$guid}}
+
+### Check db connection
+GET http://localhost:3000/health
+Content-Type: application/json
+
+
+###############################################################################
+# 1. CUSTOMERS ENDPOINTS
+###############################################################################
+
+### GET All Customers
+GET {{baseUrl}}/customers
+Content-Type: application/json
+
+###
+
+### POST Create Customer
+POST {{baseUrl}}/customers
+Content-Type: application/json
+
+{
+  "company_name": "PT Jaya Sentosa"
+}
+
+###
+
+###############################################################################
+# 2. RFQs ENDPOINTS
+###############################################################################
+
+### GET All RFQs
+GET {{baseUrl}}/rfqs
+Content-Type: application/json
+
+###
+
+### GET Single RFQ by ID
+# Ganti angka 1 di bawah dengan ID RFQ yang ada di database
+GET {{baseUrl}}/rfqs/1
+Content-Type: application/json
+
+###
+
+### POST Create New RFQ
+POST {{baseUrl}}/rfqs
+Content-Type: application/json
+
+{
+  "customer_id": 1,
+  "idempotency_key": "{{idempotencyKey}}",
+  "status": "DRAFT",
+  "items": [
+    {
+      "sku": "SKU-MONITOR-24",
+      "product_name": "Monitor LG 24 Inch",
+      "qty": 2,
+      "unit_price": 1500000.00
+    },
+    {
+      "sku": "SKU-KEYBOARD-MECH",
+      "product_name": "Keyboard Mechanical RGB",
+      "qty": 5,
+      "unit_price": 500000.00
+    }
+  ]
+}
